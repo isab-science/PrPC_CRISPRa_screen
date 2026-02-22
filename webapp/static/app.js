@@ -1,0 +1,497 @@
+const el = (id) => document.getElementById(id);
+
+let currentRunId = null;
+let currentLogIndex = 0;
+let pollTimer = null;
+let figuresUnlocked = false;
+const MODE_ARRAYED = "arrayed";
+const MODE_POOLED = "pooled";
+const SETUP_COOKIE_NAME = "prpcscreen_setup";
+const SETUP_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 180;
+const SETUP_COOKIE_VERSION = 1;
+
+const SETUP_INPUT_IDS = [
+  "mode_arrayed",
+  "mode_pooled",
+  "data_root",
+  "raw_dir",
+  "layout_csv",
+  "genomics_excel",
+  "output_dir",
+  "skip_fret",
+  "skip_glo",
+  "heatmap_plate",
+];
+
+const FIGURE_LABELS = {
+  "candidate_volcano_interactive.html": "Candidate volcano (interactive)",
+  "candidate_volcano_meanlog2_pvalue.png": "Candidate volcano (static, legacy)",
+  "candidate_flashlight_ranked_meanlog2_interactive.html": "Candidate ranking flashlight (interactive)",
+  "distribution_log2fc_rep1_interactive.html": "Distribution histogram (Log2FC rep1, interactive)",
+  "distribution_log2fc_rep1.png": "Distribution histogram (Log2FC rep1, static, legacy)",
+  "candidate_flashlight_ranked_meanlog2.png": "Candidate ranking flashlight (Mean log2)",
+  "genomic_skyline_meanlog2fc_interactive.html": "Genomic skyline (interactive)",
+  "genomic_skyline_meanlog2fc.png": "Genomic skyline (Mean log2FC)",
+  "grouped_boxplot_raw_rep1_interactive.html": "Grouped violin/box plot (interactive)",
+  "grouped_boxplot_raw_rep1.png": "Grouped violin/box plot (Raw replicate 1)",
+  "plate_heatmap_raw_rep1_interactive.html": "Plate heatmap (interactive)",
+  "plate_heatmap_raw_rep1.png": "Plate heatmap (Raw replicate 1)",
+  "plate_qc_ssmd_controls_interactive.html": "Plate quality controls (interactive)",
+  "plate_qc_ssmd_controls.png": "Plate quality controls (SSMD)",
+  "plate_well_series_raw_rep1_interactive.html": "Plate-well trajectory (interactive)",
+  "plate_well_series_raw_rep1.png": "Plate-well trajectory (Raw replicate 1)",
+  "replicate_agreement_log2fc_interactive.html": "Replicate agreement (interactive)",
+  "replicate_agreement_log2fc.png": "Replicate agreement (Log2FC)",
+};
+
+function toTitleCaseWords(text) {
+  return text
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
+}
+
+function fallbackFigureLabel(filename, kind) {
+  const base = filename.replace(/\.(png|html?)$/i, "");
+  const normalized = base
+    .replace(/[_-]+/g, " ")
+    .replace(/\blog2fc\b/gi, "log2FC")
+    .replace(/\bssmd\b/gi, "SSMD")
+    .replace(/\brep(\d+)\b/gi, "replicate $1");
+  let label = toTitleCaseWords(normalized);
+  if (kind === "html" && !/interactive/i.test(label)) {
+    label += " (interactive)";
+  }
+  return label;
+}
+
+function figureDisplayLabel(figure) {
+  const key = (figure.name || "").toLowerCase();
+  return FIGURE_LABELS[key] || fallbackFigureLabel(figure.name || "", figure.kind || "");
+}
+
+function setStatus(text, cls) {
+  const s = el("status");
+  s.textContent = text;
+  s.className = `status ${cls}`;
+}
+
+function appendLog(line) {
+  const log = el("log");
+  log.textContent += `${line}\n`;
+  log.scrollTop = log.scrollHeight;
+}
+
+function clearLog() {
+  el("log").textContent = "";
+}
+
+function setPreviewState(item = null) {
+  const preview = el("preview");
+  const frame = el("preview_frame");
+  const empty = el("preview_empty");
+
+  if (item && item.url) {
+    if (item.kind === "html") {
+      frame.src = item.url;
+      frame.style.display = "block";
+      preview.removeAttribute("src");
+      preview.style.display = "none";
+    } else {
+      preview.src = item.url;
+      preview.style.display = "block";
+      frame.removeAttribute("src");
+      frame.style.display = "none";
+    }
+    empty.style.display = "none";
+  } else {
+    preview.removeAttribute("src");
+    preview.style.display = "none";
+    frame.removeAttribute("src");
+    frame.style.display = "none";
+    empty.style.display = "flex";
+  }
+}
+
+function selectedMode() {
+  const checked = document.querySelector('input[name="mode"]:checked');
+  const mode = (checked?.value || MODE_ARRAYED).trim().toLowerCase();
+  return mode === MODE_POOLED ? MODE_POOLED : MODE_ARRAYED;
+}
+
+function normalizeMode(value) {
+  const mode = String(value || "").trim().toLowerCase();
+  return mode === MODE_POOLED ? MODE_POOLED : MODE_ARRAYED;
+}
+
+function setMode(value) {
+  const mode = normalizeMode(value);
+  const arrayed = el("mode_arrayed");
+  const pooled = el("mode_pooled");
+  if (arrayed) arrayed.checked = mode === MODE_ARRAYED;
+  if (pooled) pooled.checked = mode === MODE_POOLED;
+}
+
+function readCookieValue(name) {
+  const prefix = `${name}=`;
+  const parts = document.cookie ? document.cookie.split("; ") : [];
+  for (const part of parts) {
+    if (part.startsWith(prefix)) {
+      return part.slice(prefix.length);
+    }
+  }
+  return "";
+}
+
+function clearCookie(name) {
+  const secure = window.location.protocol === "https:" ? "; Secure" : "";
+  document.cookie = `${name}=; Max-Age=0; Path=/; SameSite=Lax${secure}`;
+}
+
+function readSetupCookie() {
+  const raw = readCookieValue(SETUP_COOKIE_NAME);
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(decodeURIComponent(raw));
+    if (!parsed || typeof parsed !== "object") return null;
+    if (Number(parsed.v || 0) !== SETUP_COOKIE_VERSION) return null;
+    return parsed;
+  } catch {
+    clearCookie(SETUP_COOKIE_NAME);
+    return null;
+  }
+}
+
+function clearFigureList() {
+  const list = el("figures");
+  if (list) {
+    list.innerHTML = "";
+    if (!figuresUnlocked) {
+      const li = document.createElement("li");
+      li.textContent = "Run the pipeline to generate and show new figures.";
+      li.style.color = "#475569";
+      li.style.fontSize = "13px";
+      list.appendChild(li);
+    }
+  }
+  setPreviewState(null);
+}
+
+function updateFigureRefreshState() {
+  const refreshBtn = el("refresh_figs");
+  if (!refreshBtn) return;
+  refreshBtn.disabled = !figuresUnlocked;
+  refreshBtn.title = figuresUnlocked
+    ? "Refresh figures"
+    : "Figures appear only after a successful pipeline run.";
+}
+
+function writeSetupCookie(setup) {
+  const secure = window.location.protocol === "https:" ? "; Secure" : "";
+  const payload = encodeURIComponent(JSON.stringify(setup));
+  document.cookie =
+    `${SETUP_COOKIE_NAME}=${payload}; Max-Age=${SETUP_COOKIE_MAX_AGE_SECONDS}; Path=/; SameSite=Lax${secure}`;
+}
+
+function readSetupFromForm() {
+  return {
+    v: SETUP_COOKIE_VERSION,
+    mode: selectedMode(),
+    data_root: el("data_root").value.trim(),
+    raw_dir: el("raw_dir").value.trim(),
+    layout_csv: el("layout_csv").value.trim(),
+    genomics_excel: el("genomics_excel").value.trim(),
+    output_dir: el("output_dir").value.trim(),
+    skip_fret: Number(el("skip_fret").value),
+    skip_glo: Number(el("skip_glo").value),
+    heatmap_plate: el("heatmap_plate").value.trim(),
+  };
+}
+
+function persistSetupCookie() {
+  writeSetupCookie(readSetupFromForm());
+}
+
+function setTextIfPresent(id, value) {
+  if (value === null || value === undefined) return;
+  const node = el(id);
+  if (!node) return;
+  node.value = String(value);
+}
+
+function setNumberIfPresent(id, value) {
+  if (value === null || value === undefined) return;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return;
+  const node = el(id);
+  if (!node) return;
+  node.value = String(parsed);
+}
+
+function restoreSetupFromCookie() {
+  const saved = readSetupCookie();
+  if (!saved) return false;
+
+  setMode(saved.mode);
+  setTextIfPresent("data_root", saved.data_root);
+  setTextIfPresent("raw_dir", saved.raw_dir);
+  setTextIfPresent("layout_csv", saved.layout_csv);
+  setTextIfPresent("genomics_excel", saved.genomics_excel);
+  setTextIfPresent("output_dir", saved.output_dir);
+  setTextIfPresent("heatmap_plate", saved.heatmap_plate);
+  setNumberIfPresent("skip_fret", saved.skip_fret);
+  setNumberIfPresent("skip_glo", saved.skip_glo);
+  return true;
+}
+
+function registerSetupPersistenceHandlers() {
+  SETUP_INPUT_IDS.forEach((id) => {
+    const node = el(id);
+    if (!node) return;
+    node.addEventListener("change", persistSetupCookie);
+    node.addEventListener("blur", persistSetupCookie);
+  });
+}
+
+function applyModeUi() {
+  const mode = selectedMode();
+  const pooled = mode === MODE_POOLED;
+  const layout = document.querySelector("main.layout");
+  if (layout) {
+    layout.classList.toggle("mode-arrayed", !pooled);
+    layout.classList.toggle("mode-pooled", pooled);
+  }
+
+  const rawLabel = el("raw_label_text");
+  if (rawLabel) {
+    rawLabel.textContent = pooled ? "Pooled table (CSV/TSV/TXT/XLSX)" : "Raw dir/file";
+  }
+  const genomicsLabel = el("genomics_label_text");
+  if (genomicsLabel) {
+    genomicsLabel.textContent = pooled ? "Genomics XLSX (optional)" : "Genomics XLSX";
+  }
+  const modeNote = el("mode_note");
+  if (modeNote) {
+    modeNote.textContent = pooled
+      ? "Pooled mode runs pooled metrics + reusable replicate/distribution/volcano figure scripts. Layout/plate-only fields are hidden."
+      : "Arrayed mode runs the full plate-based workflow, including integration, QC, heatmap, and grouped views.";
+  }
+
+  document.querySelectorAll(".arrayed-only").forEach((node) => {
+    node.classList.toggle("hidden", pooled);
+  });
+}
+
+function readForm() {
+  return {
+    mode: selectedMode(),
+    raw_dir: el("raw_dir").value.trim(),
+    layout_csv: el("layout_csv").value.trim(),
+    genomics_excel: el("genomics_excel").value.trim(),
+    output_dir: el("output_dir").value.trim(),
+    skip_fret: Number(el("skip_fret").value),
+    skip_glo: Number(el("skip_glo").value),
+    heatmap_plate: el("heatmap_plate").value.trim(),
+    debug: true,
+  };
+}
+
+async function scanRoot() {
+  const root = el("data_root").value.trim();
+  if (!root) {
+    appendLog("Data root is empty.");
+    return;
+  }
+  appendLog(`Auto-filling paths from root: ${root}`);
+  const resp = await fetch("/api/scan", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ root }),
+  });
+  const data = await resp.json();
+  if (!resp.ok) {
+    appendLog(`Auto-fill failed: ${data.detail || "unknown error"}`);
+    return;
+  }
+
+  const rawList = el("raw_list");
+  rawList.innerHTML = "";
+  data.raw_candidates.forEach((v) => {
+    const o = document.createElement("option");
+    o.value = v;
+    rawList.appendChild(o);
+  });
+
+  const layoutList = el("layout_list");
+  layoutList.innerHTML = "";
+  data.layout_candidates.forEach((v) => {
+    const o = document.createElement("option");
+    o.value = v;
+    layoutList.appendChild(o);
+  });
+
+  const genomicsList = el("genomics_list");
+  genomicsList.innerHTML = "";
+  data.genomics_candidates.forEach((v) => {
+    const o = document.createElement("option");
+    o.value = v;
+    genomicsList.appendChild(o);
+  });
+
+  el("raw_dir").value = data.raw_selected || "";
+  el("layout_csv").value = data.layout_selected || "";
+  el("genomics_excel").value = data.genomics_selected || "";
+
+  if (selectedMode() === MODE_POOLED) {
+    const pooledCandidate = (data.raw_candidates || []).find((candidate) =>
+      /\.(csv|tsv|txt|xlsx|xls)$/i.test(String(candidate))
+    );
+    if (pooledCandidate) {
+      el("raw_dir").value = pooledCandidate;
+    }
+  }
+
+  appendLog(
+    `Auto-fill complete. Raw candidates: ${data.counts.raw}; Layout CSVs: ${data.counts.layout}; Genomics files: ${data.counts.genomics}`
+  );
+  if (Array.isArray(data.scan_roots) && data.scan_roots.length > 0) {
+    appendLog(`Scanned roots: ${data.scan_roots.join(" | ")}`);
+  }
+  if (data.layout_selected) {
+    appendLog(`Auto-selected Layout CSV: ${data.layout_selected}`);
+  }
+  if (data.genomics_selected) {
+    appendLog(`Auto-selected Genomics XLSX: ${data.genomics_selected}`);
+  }
+  persistSetupCookie();
+}
+
+async function fetchStatus() {
+  if (!currentRunId) return;
+  const resp = await fetch(`/api/status/${currentRunId}?from_index=${currentLogIndex}`);
+  const data = await resp.json();
+  if (!resp.ok) {
+    if (resp.status === 404) {
+      appendLog(
+        "Status error: Run not found. The web server likely restarted during execution (commonly from --reload). " +
+          "For long runs, start server without --reload and run again."
+      );
+      setStatus("Failed", "failed");
+    } else {
+      appendLog(`Status error: ${data.detail || "unknown error"}`);
+    }
+    clearInterval(pollTimer);
+    pollTimer = null;
+    return;
+  }
+
+  data.logs.forEach(appendLog);
+  currentLogIndex = data.next_index;
+
+  if (data.status === "running" || data.status === "queued") {
+    setStatus("Running", "running");
+    return;
+  }
+  if (data.status === "completed") {
+    setStatus("Completed", "completed");
+    clearInterval(pollTimer);
+    pollTimer = null;
+    figuresUnlocked = true;
+    updateFigureRefreshState();
+    await refreshFigures();
+    return;
+  }
+  if (data.status === "failed") {
+    setStatus("Failed", "failed");
+    clearInterval(pollTimer);
+    pollTimer = null;
+  }
+}
+
+async function runPipeline() {
+  clearLog();
+  setStatus("Starting", "running");
+  figuresUnlocked = false;
+  updateFigureRefreshState();
+  clearFigureList();
+  const payload = readForm();
+  persistSetupCookie();
+  appendLog(
+    `Run request: mode=${payload.mode} | raw=${payload.raw_dir} | layout=${payload.layout_csv || "(none)"} | genomics=${payload.genomics_excel || "(none)"} | output=${payload.output_dir} | debug=${payload.debug}`
+  );
+  const resp = await fetch("/api/run", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const data = await resp.json();
+  if (!resp.ok) {
+    setStatus("Failed", "failed");
+    appendLog(`Failed to start run: ${data.detail || "unknown error"}`);
+    return;
+  }
+  currentRunId = data.run_id;
+  currentLogIndex = 0;
+  appendLog(`Run id: ${currentRunId}`);
+  if (pollTimer) clearInterval(pollTimer);
+  pollTimer = setInterval(fetchStatus, 1000);
+}
+
+async function refreshFigures() {
+  if (!figuresUnlocked) {
+    clearFigureList();
+    return;
+  }
+  const output = el("output_dir").value.trim() || "results";
+  const resp = await fetch(`/api/figures?output_dir=${encodeURIComponent(output)}`);
+  const data = await resp.json();
+  const list = el("figures");
+  list.innerHTML = "";
+  data.figures.forEach((f) => {
+    const li = document.createElement("li");
+    const btn = document.createElement("button");
+    const label = figureDisplayLabel(f);
+    const isInteractive = f.kind === "html";
+    btn.textContent = isInteractive ? `${label} - this takes some time` : label;
+    btn.title = isInteractive
+      ? `File: ${f.name}\nThis takes some time to open.`
+      : `File: ${f.name}`;
+    btn.type = "button";
+    btn.addEventListener("click", () => {
+      setPreviewState(f);
+    });
+    li.appendChild(btn);
+    list.appendChild(li);
+  });
+  if (data.figures.length > 0) {
+    setPreviewState(data.figures[0]);
+  } else {
+    setPreviewState(null);
+  }
+}
+
+el("scan_btn").addEventListener("click", scanRoot);
+el("run_btn").addEventListener("click", runPipeline);
+el("refresh_figs").addEventListener("click", () => {
+  if (!figuresUnlocked) {
+    appendLog("Figures will be shown after a successful pipeline run.");
+    return;
+  }
+  refreshFigures();
+});
+document.querySelectorAll('input[name="mode"]').forEach((node) => {
+  node.addEventListener("change", applyModeUi);
+});
+
+restoreSetupFromCookie();
+setStatus("Idle", "idle");
+applyModeUi();
+registerSetupPersistenceHandlers();
+persistSetupCookie();
+clearFigureList();
+updateFigureRefreshState();
+
+el("preview").addEventListener("error", () => {
+  setPreviewState(null);
+});

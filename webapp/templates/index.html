@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Automated CRISPR Screen Analysis</title>
+  <link rel="icon" href="/static/favicon.ico?v=20260221">
+  <link rel="apple-touch-icon" href="/static/favicon.ico?v=20260221">
+  <link rel="stylesheet" href="/static/style.css?v=20260222e">
+</head>
+<body>
+  <main class="layout">
+    <section class="panel">
+      <div style="display:flex; justify-content:flex-end; align-items:center; gap:10px; margin-bottom:8px;">
+        <span style="font-size:12px; color:#334155;">Signed in as {{ user.username }}{% if user.email %} ({{ user.email }}){% endif %}</span>
+        {% if user.is_admin and user.username|lower == "aag" %}
+        <a href="/admin/dashboard" style="font-size:12px; color:#0f172a;">Admin</a>
+        {% endif %}
+        <form action="/auth/logout" method="post" style="margin:0;">
+          <button type="submit" class="secondary" style="padding:4px 8px; font-size:12px;">Log out</button>
+        </form>
+      </div>
+      <div class="brand">
+        <img src="/static/isab.svg?v=20260221" alt="ISAB logo" class="brand-logo">
+        <h1>Automated CRISPR Screen Analysis</h1>
+      </div>
+
+      <div class="grid">
+        <fieldset class="mode-control">
+          <legend>Mode</legend>
+          <label class="radio-option" for="mode_arrayed">
+            <input id="mode_arrayed" name="mode" type="radio" value="arrayed" {% if defaults.mode != "pooled" %}checked{% endif %} />
+            <span>Arrayed</span>
+          </label>
+          <label class="radio-option" for="mode_pooled">
+            <input id="mode_pooled" name="mode" type="radio" value="pooled" {% if defaults.mode == "pooled" %}checked{% endif %} />
+            <span>Pooled</span>
+          </label>
+        </fieldset>
+        <div></div>
+
+        <label>Data root
+          <input id="data_root" value="{{ defaults.data_root }}" />
+        </label>
+        <button id="scan_btn" class="secondary">Auto-fill Paths</button>
+
+        <label><span id="raw_label_text">Raw dir/file</span>
+          <input id="raw_dir" list="raw_list" />
+          <datalist id="raw_list"></datalist>
+        </label>
+        <button id="raw_hint" class="ghost" type="button" title="Arrayed: folder with raw exports. Pooled: one pooled table file (CSV/TSV/TXT/XLSX).">?</button>
+
+        <label class="arrayed-only"><span>Layout CSV</span>
+          <input id="layout_csv" list="layout_list" />
+          <datalist id="layout_list"></datalist>
+        </label>
+        <button id="layout_hint" class="ghost arrayed-only" type="button" title="Plate layout/annotation CSV (arrayed mode).">?</button>
+
+        <label><span id="genomics_label_text">Genomics XLSX</span>
+          <input id="genomics_excel" list="genomics_list" />
+          <datalist id="genomics_list"></datalist>
+        </label>
+        <button id="genomics_hint" class="ghost" type="button" title="Optional in pooled mode. Required in arrayed mode. Used for skyline and sublibrary annotations.">?</button>
+
+        <label>Output dir
+          <input id="output_dir" value="{{ defaults.output_dir }}" />
+        </label>
+        <div></div>
+
+        <div></div>
+        <div></div>
+
+        <label class="arrayed-only">Skip FRET
+          <input id="skip_fret" type="number" value="{{ defaults.skip_fret }}" />
+        </label>
+        <label class="arrayed-only">Skip GLO
+          <input id="skip_glo" type="number" value="{{ defaults.skip_glo }}" />
+        </label>
+        <label class="arrayed-only">Heatmap plate
+          <input id="heatmap_plate" value="{{ defaults.heatmap_plate }}" />
+        </label>
+      </div>
+      <p id="mode_note" class="mode-note"></p>
+
+      <div class="actions">
+        <button id="run_btn">Run Pipeline</button>
+        <span id="status" class="status idle">Idle</span>
+      </div>
+
+      <details class="help">
+        <summary>Guidance</summary>
+        <ul>
+          <li><code>Mode</code>: switch between arrayed and pooled workflows from the same run button.</li>
+          <li><code>Auto-fill Paths</code> auto-fills raw/layout/genomics candidates.</li>
+          <li><code>Raw dir/file</code>: arrayed mode expects a folder (or one raw file); pooled mode expects one pooled table file.</li>
+          <li><code>Layout CSV</code>: arrayed mode only; should include plate/well/control metadata columns.</li>
+          <li><code>Genomics XLSX</code>: required for arrayed mode, optional for pooled mode.</li>
+          <li><code>Skyline sheet</code> is auto-selected internally from compatible worksheets.</li>
+          <li><code>Skyline sublibrary</code> is now a dropdown in the interactive skyline figure controls.</li>
+          <li><code>Heatmap plate</code>: use one number (<code>1</code>), a range (<code>1-4</code>), a series (<code>1,2,6</code>), or <code>all</code>.</li>
+          <li>Outputs are written to <code>output_dir</code> and <code>output_dir/figures</code>.</li>
+          <li>For stable long runs, start uvicorn without <code>--reload</code> (auto-reload can restart server mid-run).</li>
+        </ul>
+      </details>
+
+      <h2>Live Log</h2>
+      <pre id="log"></pre>
+    </section>
+
+    <section class="panel preview-panel">
+      <h2>Generated Figures</h2>
+      <button id="refresh_figs" class="secondary">Refresh Figures</button>
+      <ul id="figures" class="figures"></ul>
+      <div id="preview_empty" class="preview-empty">
+        <p>No figures shown yet.</p>
+        <p>Run the pipeline to generate and display new figures.</p>
+      </div>
+      <img id="preview" alt="Figure preview" />
+      <iframe id="preview_frame" title="Interactive figure preview"></iframe>
+    </section>
+  </main>
+  <script src="/static/app.js?v=20260222h"></script>
+</body>
+</html>

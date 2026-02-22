@@ -1,0 +1,277 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "Segoe UI", Tahoma, sans-serif;
+  color: #0f172a;
+  background: linear-gradient(135deg, #eef6ff, #f8fafc 55%, #f2f7f2);
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: 16px;
+  padding: 16px;
+  min-height: 100vh;
+  border-radius: 14px;
+  transition: background-color 180ms ease;
+}
+
+.layout.mode-arrayed {
+  background-color: rgba(59, 130, 246, 0.10);
+}
+
+.layout.mode-pooled {
+  background-color: rgba(249, 115, 22, 0.10);
+}
+
+.layout.mode-arrayed .panel {
+  background: #f2f8ff;
+}
+
+.layout.mode-pooled .panel {
+  background: #fff7ef;
+}
+
+.layout > .panel {
+  min-height: 0;
+}
+
+.panel {
+  background: #ffffff;
+  border: 1px solid #d6e0ea;
+  border-radius: 12px;
+  padding: 14px;
+  box-shadow: 0 6px 22px rgba(15, 23, 42, 0.08);
+  transition: background-color 180ms ease;
+}
+
+.preview-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+h1, h2 {
+  margin: 0 0 10px;
+}
+
+.sub {
+  margin-top: 0;
+  color: #475569;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+input,
+select {
+  width: 100%;
+  margin-top: 5px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 8px;
+  background: #ffffff;
+}
+
+.mode-control {
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+}
+
+.mode-control legend {
+  padding: 0 4px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.radio-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.radio-option input[type="radio"] {
+  width: auto;
+  margin: 0;
+  padding: 0;
+}
+
+button {
+  border: 0;
+  border-radius: 8px;
+  padding: 8px 12px;
+  background: #0b7285;
+  color: white;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+button.secondary {
+  background: #334155;
+}
+
+button.ghost {
+  background: #e2e8f0;
+  color: #0f172a;
+  width: 34px;
+  padding: 8px 0;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 12px 0;
+}
+
+.status {
+  border-radius: 999px;
+  padding: 5px 10px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.status.idle {
+  background: #e2e8f0;
+}
+
+.status.running {
+  background: #fde68a;
+}
+
+.status.completed {
+  background: #bbf7d0;
+}
+
+.status.failed {
+  background: #fecaca;
+}
+
+.help {
+  margin: 10px 0;
+}
+
+.mode-note {
+  margin: 0 0 8px 0;
+  font-size: 12px;
+  color: #475569;
+}
+
+.hidden {
+  display: none !important;
+}
+
+pre#log {
+  background: #0f172a;
+  color: #e2e8f0;
+  border-radius: 10px;
+  padding: 10px;
+  min-height: 320px;
+  max-height: 520px;
+  overflow: auto;
+  white-space: pre-wrap;
+}
+
+.figures {
+  list-style: none;
+  margin: 10px 0;
+  padding: 0;
+  max-height: 240px;
+  overflow: auto;
+}
+
+.figures li {
+  margin-bottom: 6px;
+}
+
+.figures button {
+  width: 100%;
+  text-align: left;
+  background: #1d4ed8;
+}
+
+#preview {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  object-fit: contain;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+#preview_frame {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+.preview-empty {
+  width: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 6px;
+  border: 1px dashed #94a3b8;
+  border-radius: 10px;
+  background: #f8fafc;
+  color: #475569;
+  text-align: center;
+  padding: 16px;
+}
+
+.preview-panel #preview,
+.preview-panel #preview_frame,
+.preview-panel .preview-empty {
+  flex: 1 1 auto;
+}
+
+.preview-empty p {
+  margin: 0;
+}
+
+@media (max-width: 1000px) {
+  .layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.brand-logo {
+  width: 35.2px;
+  height: auto;
+  border-radius: 8px;
+  border: 1px solid #d6e0ea;
+  background: #ffffff;
+}

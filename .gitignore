@@ -1,0 +1,13 @@
+__pycache__/
+*.py[cod]
+.venv/
+.DS_Store
+webapp/state/
+results/figures/*
+!results/figures/candidate_volcano_interactive.html
+!results/figures/candidate_volcano_interactive.html.gz
+
+# Never commit runtime/user data
+*.sqlite
+*.sqlite3
+*.db

@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PrPCScreen Login</title>
+  <style>
+    body { margin: 0; font-family: "Segoe UI", Tahoma, sans-serif; background: #f1f5f9; color: #0f172a; }
+    .card { max-width: 460px; margin: 10vh auto; background: #fff; border: 1px solid #cbd5e1; border-radius: 12px; padding: 18px; }
+    h1 { margin: 0 0 14px 0; font-size: 22px; }
+    label { display: block; margin: 10px 0; font-size: 14px; font-weight: 600; }
+    input { width: 100%; margin-top: 6px; border: 1px solid #cbd5e1; border-radius: 8px; padding: 8px; }
+    button { margin-top: 10px; background: #0b7285; color: #fff; border: 0; border-radius: 8px; padding: 9px 12px; font-weight: 700; cursor: pointer; }
+    .msg { margin: 10px 0; font-size: 13px; }
+    .error { color: #b91c1c; }
+    .notice { color: #0369a1; }
+  </style>
+</head>
+<body>
+  <main class="card">
+    <h1>Sign in</h1>
+    {% if error %}<div class="msg error">{{ error }}</div>{% endif %}
+    {% if notice %}<div class="msg notice">{{ notice }}</div>{% endif %}
+    <form action="/auth/login" method="post">
+      <label>User ID
+        <input name="user_id" type="text" required />
+      </label>
+      <label>Password
+        <input name="password" type="password" required />
+      </label>
+      <button type="submit">Sign in</button>
+    </form>
+    <p style="font-size:13px; margin-top:14px;">No access yet? <a href="/auth/signup">Request authorization</a></p>
+  </main>
+</body>
+</html>
