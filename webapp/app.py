@@ -33,7 +33,6 @@ from webapp.metadata_store import MetadataStore
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-METADATA_DB_PATH = REPO_ROOT / "webapp" / "state" / "metadata.sqlite3"
 DEFAULT_OUTPUT_DIR = "results"
 DEFAULT_MODE = "arrayed"
 DEFAULT_SHEET = "skylineplot2"
@@ -67,6 +66,17 @@ PUBLIC_USER_ID_RE = re.compile(r"^[A-Za-z0-9._-]+$")
 PRIMARY_ADMIN_USERNAME = os.getenv("PRPCSCREEN_PRIMARY_ADMIN_USER", "aag").strip() or "aag"
 PRIMARY_ADMIN_EMAIL = os.getenv("PRPCSCREEN_PRIMARY_ADMIN_EMAIL", "adriano.aguzzi@isab.science").strip().lower()
 SWISS_TZ = ZoneInfo("Europe/Zurich")
+
+
+def _resolve_metadata_db_path() -> Path:
+    configured = os.getenv("PRPCSCREEN_METADATA_DB_PATH", "").strip()
+    if configured:
+        path = Path(configured).expanduser()
+        return path if path.is_absolute() else (REPO_ROOT / path)
+    return REPO_ROOT / "webapp" / "state" / "metadata.sqlite3"
+
+
+METADATA_DB_PATH = _resolve_metadata_db_path()
 
 
 def _default_data_root() -> str:
